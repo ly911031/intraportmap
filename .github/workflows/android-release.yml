@@ -27,9 +27,11 @@ jobs:
         with:
           python-version: '3.12'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - name: Install Android toolchain
         run: |
-          & "$env:ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat" 'platforms;android-36' 'build-tools;36.1.0' 'ndk;27.3.13750724'
+          & (Get-Command sdkmanager.bat).Source 'platforms;android-36' 'build-tools;36.1.0' 'ndk;27.3.13750724'
           if ($LASTEXITCODE -ne 0) { throw 'Android SDK installation failed' }
           python -m pip install --target .build-tools/python cmake==3.31.6 ninja==1.11.1.4
           if ($LASTEXITCODE -ne 0) { throw 'CMake/Ninja installation failed' }
