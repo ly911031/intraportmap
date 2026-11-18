@@ -39,3 +39,9 @@ build/
 # 发布打包
 *.tar.gz
 *.zip
+
+# Android local tools and signing material
+.build-tools/
+android/build/
+android/*.keystore
+dist/
