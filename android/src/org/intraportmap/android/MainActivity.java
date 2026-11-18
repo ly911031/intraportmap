@@ -31,9 +31,9 @@ public class MainActivity extends Activity {
             status.setText(TunnelService.running ? "运行中 · 连接详情已写入日志文件" : "已停止");
             ssStatus.setText(ShadowsocksService.state);
             PowerManager pm = (PowerManager)getSystemService(POWER_SERVICE);
-            battery.setText("电池优化：" + (pm.isIgnoringBatteryOptimizations(getPackageName()) ? "已豁免" : "未豁免，休眠可能断网")
+            battery.setText("电池优化：" + (Build.VERSION.SDK_INT<23 ? "当前系统无需 Doze 豁免" : pm.isIgnoringBatteryOptimizations(getPackageName()) ? "已豁免" : "未豁免，休眠可能断网")
                 + "\n省电模式：" + (pm.isPowerSaveMode() ? "开启" : "关闭")
-                + " · 深度休眠：" + (pm.isDeviceIdleMode() ? "是" : "否"));
+                + " · 深度休眠：" + (Build.VERSION.SDK_INT>=23 && pm.isDeviceIdleMode() ? "是" : "否"));
             handler.postDelayed(this, 1000);
         }
     };
@@ -109,6 +109,9 @@ public class MainActivity extends Activity {
         Button exempt = new Button(this); exempt.setText("允许忽略电池优化"); body.addView(exempt);
         exempt.setOnClickListener(v -> {
             PowerManager pm = (PowerManager)getSystemService(POWER_SERVICE);
+            if(Build.VERSION.SDK_INT<23) {
+                Toast.makeText(this,"Android 5 无需 Doze 电池优化豁免，可在厂商设置中允许后台运行",Toast.LENGTH_LONG).show(); return;
+            }
             if(pm.isIgnoringBatteryOptimizations(getPackageName())) {
                 Toast.makeText(this,"已获得电池优化豁免",Toast.LENGTH_SHORT).show(); return;
             }
@@ -183,7 +186,7 @@ public class MainActivity extends Activity {
             edit.putString("ss_password",password);
             for(EditText e:new EditText[]{ssHost,ssPort,ssTimeout,ssDns,ssMtu}) edit.putString((String)e.getTag(),value(e));
             edit.putInt("ss_method",ssMethod.getSelectedItemPosition()).putInt("ss_protocol",ssProtocol.getSelectedItemPosition()).apply();
-            startForegroundService(new Intent(this,ShadowsocksService.class).putStringArrayListExtra("args",args));
+            Compat.start(this,new Intent(this,ShadowsocksService.class).putStringArrayListExtra("args",args));
             ssStatus.setText("配置已保存，正在启动…");
             Toast.makeText(this,"SS 配置已保存，正在启动；监听成功后会更新状态",Toast.LENGTH_SHORT).show();
         } catch(IllegalArgumentException e) { Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show(); }
@@ -244,7 +247,7 @@ public class MainActivity extends Activity {
             for(EditText e:new EditText[]{server,remote,local,retry,timeout}) edit.putString((String)e.getTag(),value(e));
             // Keep the communication key in memory only; never persist it or print arguments.
             edit.putInt("role",role.getSelectedItemPosition()).putInt("protocol",protocol.getSelectedItemPosition()).apply();
-            startForegroundService(new Intent(this,TunnelService.class).putStringArrayListExtra("args",args));
+            Compat.start(this,new Intent(this,TunnelService.class).putStringArrayListExtra("args",args));
             status.setText("配置已保存，正在启动…");
             Toast.makeText(this,"配置已保存，正在启动端口映射",Toast.LENGTH_SHORT).show();
         } catch(IllegalArgumentException e) { Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show(); }

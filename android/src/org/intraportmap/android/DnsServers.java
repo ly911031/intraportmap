@@ -6,6 +6,11 @@ import java.util.ArrayList;
 
 /** Numeric DNS addresses in the syntax accepted by bundled c-ares 1.18.1. */
 final class DnsServers {
+    static String join(String delimiter,Iterable<?> items) {
+        StringBuilder result=new StringBuilder();
+        for(Object item:items) { if(result.length()>0) result.append(delimiter); result.append(item); }
+        return result.toString();
+    }
     static String normalize(String csv) {
         ArrayList<String> result=new ArrayList<>();
         for(String entry:csv.split(",",-1)) {
@@ -27,6 +32,6 @@ final class DnsServers {
                 }
             } catch(Exception e) { throw new IllegalArgumentException("DNS 地址无效："+entry); }
         }
-        return String.join(",",result);
+        return join(",",result);
     }
 }

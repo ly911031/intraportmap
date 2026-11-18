@@ -4,10 +4,19 @@
 #include <android/log.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+#include <errno.h>
+#include <fcntl.h>
 
 ssize_t ss_getrandom(void *buffer, size_t length, unsigned int flags)
 {
-    return syscall(__NR_getrandom, buffer, length, flags);
+    ssize_t result=syscall(__NR_getrandom, buffer, length, flags);
+    if(result>=0 || errno!=ENOSYS) return result;
+    // Android 5 devices may have kernels predating getrandom(2).
+    int fd=open("/dev/urandom",O_RDONLY|O_CLOEXEC);
+    if(fd<0) return -1;
+    do { result=read(fd,buffer,length); } while(result<0 && errno==EINTR);
+    int saved=errno; close(fd); errno=saved;
+    return result;
 }
 
 // This is ss-server, not a VPN client. No socket-protection broker is needed.

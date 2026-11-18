@@ -7,6 +7,7 @@ import java.util.*;
 /** Deterministic callback simulation; not an on-device radio handover test. */
 public final class NetworkWatcherTest {
     public static void main(String[] args) {
+        if(args.length>0) android.os.Build.VERSION.SDK_INT=Integer.parseInt(args[0]);
         Context context=new Context(); ConnectivityManager cm=context.connectivity;
         cm.network=new Network("wifi"); cm.properties=new LinkProperties("wlan0","192.168.1.2","192.168.1.1");
         ArrayList<Boolean> events=new ArrayList<>();
@@ -48,6 +49,7 @@ public final class NetworkWatcherTest {
         watcher.close();
         System.out.println("PASS: initial network, handover debounce, DNS/address changes, offline/recovery, stop cleanup");
         System.out.println("PASS: SS DNS-only mode ignores network/IP/order/disconnect; restarts only on changed DNS");
+        System.out.println("PASS: network compatibility API "+android.os.Build.VERSION.SDK_INT);
     }
     private static void require(boolean value,String message) { if(!value) throw new AssertionError(message); }
 }

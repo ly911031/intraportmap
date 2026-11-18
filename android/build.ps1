@@ -24,8 +24,8 @@ if(!(Test-Path "$ssDeps\shadowsocks\.android-source-sha256")) {
 }
 New-Item -ItemType Directory -Force "$out\classes","$out\dex","$out\package\lib","$root\dist" | Out-Null
 foreach($abi in $Abis) {
-    $native = "$out\native-$abi"
-    Run $Cmake @('-Wno-dev','-DCMAKE_WARN_DEPRECATED=OFF','-S',"$PSScriptRoot\native",'-B',$native,'-G','Ninja',"-DCMAKE_MAKE_PROGRAM=$Ninja", "-DCMAKE_TOOLCHAIN_FILE=$Ndk\build\cmake\android.toolchain.cmake", "-DANDROID_ABI=$abi",'-DANDROID_PLATFORM=android-26','-DANDROID_STL=c++_static','-DCMAKE_BUILD_TYPE=Release',"-DLIBEVENT_SOURCE=$Libevent")
+    $native = "$out\native-api21-$abi"
+    Run $Cmake @('-Wno-dev','-DCMAKE_WARN_DEPRECATED=OFF','-S',"$PSScriptRoot\native",'-B',$native,'-G','Ninja',"-DCMAKE_MAKE_PROGRAM=$Ninja", "-DCMAKE_TOOLCHAIN_FILE=$Ndk\build\cmake\android.toolchain.cmake", "-DANDROID_ABI=$abi",'-DANDROID_PLATFORM=android-21','-DANDROID_STL=c++_static','-DCMAKE_BUILD_TYPE=Release',"-DLIBEVENT_SOURCE=$Libevent")
     Run $Cmake @('--build',$native,'--parallel','4','--target','intraportmap','ss_server')
     New-Item -ItemType Directory -Force "$out\package\lib\$abi" | Out-Null
     Copy-Item "$native\libintraportmap.so" "$out\package\lib\$abi\libintraportmap.so" -Force
@@ -48,7 +48,7 @@ Run "$bt\aapt.exe" @('package','-f','-M',"$PSScriptRoot\AndroidManifest.xml",'-S
 $sources = @(Get-ChildItem "$PSScriptRoot\src" -Recurse -Filter '*.java' | ForEach-Object FullName)
 Run "$Java\bin\javac.exe" (@('-encoding','UTF-8','-source','8','-target','8','-bootclasspath',"$jar;$bt\core-lambda-stubs.jar",'-d',"$out\classes") + $sources)
 $classes = @(Get-ChildItem "$out\classes" -Recurse -Filter '*.class' | ForEach-Object FullName)
-Run "$bt\d8.bat" (@('--lib',$jar,'--min-api','26','--output',"$out\dex") + $classes)
+Run "$bt\d8.bat" (@('--lib',$jar,'--min-api','21','--output',"$out\dex") + $classes)
 Copy-Item "$out\dex\classes.dex" "$out\package\classes.dex" -Force
 Copy-Item "$out\base.apk" "$out\unsigned.apk" -Force
 Push-Location "$out\package"

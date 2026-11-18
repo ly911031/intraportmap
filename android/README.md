@@ -1,6 +1,8 @@
 # IntraPortMap Android
 
-Android 8.0（API 26）及以上的独立应用，复用仓库中的 C++ / libevent TCP、UDP 核心。无需 root。
+Android 5.0（API 21）及以上的独立应用，复用仓库中的 C++ / libevent TCP、UDP 核心。无需 root。Android 5 真机运行尚待验证。
+
+0.2.5：Java 与原生库最低版本均降至 API 21，保留新版系统功能的版本分支。Android 5 使用旧版前台服务通知、网络回调与默认网络轮询；Android 6 起支持 Doze 豁免，Android 8 起使用通知渠道和新版前台启动接口。旧内核缺少 getrandom 时回退 /dev/urandom。启动图标包含 API21 兼容矢量资源。
 
 0.2.4：统一浅色界面、圆角表单和蓝色操作按钮，更新自适应启动图标与通知图标。两个前台服务共用一条通知，通知内分别停止对应模块；任一模块停止后保留另一个模块的常驻通知。保存并启动后立即显示 Toast 和页面提示，SS 实际监听就绪后继续显示启动成功。
 
@@ -14,7 +16,7 @@ Android 8.0（API 26）及以上的独立应用，复用仓库中的 C++ / libev
 
 ## 安装与使用
 
-GitHub Actions：推送 `android-v*` 标签触发 `.github/workflows/android-release.yml`，或手动运行下载 artifact。工作流执行主机回归、三 ABI 编译、签名验证并上传 APK 与 SHA-256 校验文件；标签构建创建预发布 Release。按当前选择，每次 CI 独立生成测试签名，不上传本地私钥，因此不能覆盖安装本地版或其他 CI 签名版本。卸载前请备份配置和导出日志。
+GitHub Actions：master 上推送 Android 目录或发布工作流改动、推送 `android-v*` 标签，以及手动运行，均会在主机回归、三 ABI 编译与签名验证成功后自动发布预发布 Release，附 APK 与 SHA-256 文件。非标签运行自动创建 `android-v版本-build.运行号.尝试号` 标签。按当前选择，每次 CI 独立生成测试签名，不上传本地私钥，因此不能覆盖安装本地版或其他 CI 签名版本。卸载前请备份配置和导出日志。
 
 安装 `../dist/intraportmap-shadowsocks-android.apk`（`intraportmap-android.apk` 为相同内容的兼容文件名）。这是本地调试密钥签名的安装包，适合直接安装测试，未配置商店发布签名。
 

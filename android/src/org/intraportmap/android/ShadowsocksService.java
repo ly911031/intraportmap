@@ -30,7 +30,7 @@ public final class ShadowsocksService extends TunnelService {
             prepared.set(explicit+1,DnsServers.normalize(prepared.get(explicit+1)));
         if(!prepared.contains("-d")) {
             ConnectivityManager manager=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
-            LinkProperties properties=manager.getLinkProperties(manager.getActiveNetwork());
+            LinkProperties properties=manager.getLinkProperties(NetworkWatcher.activeNetwork(manager));
             ArrayList<String> dns=new ArrayList<>();
             if(properties!=null) for(InetAddress address:properties.getDnsServers()) {
                 String ip=address.getHostAddress();
@@ -38,7 +38,7 @@ public final class ShadowsocksService extends TunnelService {
                 dns.add(ip);
             }
             if(dns.isEmpty()) throw new IllegalArgumentException("当前网络没有 DNS，请在 Shadowsocks 页面填写 DNS 服务器");
-            prepared.add("-d"); prepared.add(DnsServers.normalize(String.join(",",dns)));
+            prepared.add("-d"); prepared.add(DnsServers.normalize(DnsServers.join(",",dns)));
         }
         return prepared;
     }

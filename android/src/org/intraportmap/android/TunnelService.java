@@ -49,7 +49,7 @@ public class TunnelService extends Service {
                 append(mode==2 ? "自动 DNS 已变化，停止旧进程并重新读取 DNS" : "网络或 DNS 已变化，停止旧进程并在当前网络重新启动");
                 setState(mode==2 ? "DNS 已变化，正在重新启动…" : "网络已切换，正在重新启动…");
                 generation++;
-                if(process!=null) process.destroyForcibly();
+                if(process!=null) Compat.destroy(process);
                 notifyAll();
             }
         },mode==2);
@@ -72,7 +72,7 @@ public class TunnelService extends Service {
             setState("正在启动…");
             if(worker!=null) {
                 append("收到启动请求，先停止旧进程，再按当前配置重启");
-                if(process!=null) process.destroyForcibly();
+                if(process!=null) Compat.destroy(process);
                 notifyAll();
                 return START_REDELIVER_INTENT;
             }
@@ -131,7 +131,7 @@ public class TunnelService extends Service {
             finally {
                 // Reap the old child before allowing the next configuration to bind.
                 if(child!=null) {
-                    child.destroyForcibly();
+                    Compat.destroy(child);
                     boolean interrupted=false;
                     for(;;) try { child.waitFor(); break; }
                     catch(InterruptedException e) { interrupted=true; }
@@ -161,7 +161,7 @@ public class TunnelService extends Service {
     }
     public void onDestroy() {
         if(networkWatcher!=null) networkWatcher.close();
-        synchronized(this) { stopping=true; if(process!=null) process.destroyForcibly(); notifyAll(); }
+        synchronized(this) { stopping=true; if(process!=null) Compat.destroy(process); notifyAll(); }
         if(worker!=null) worker.interrupt();
         if(wifi!=null && wifi.isHeld()) wifi.release();
         if(wake!=null && wake.isHeld()) wake.release();
