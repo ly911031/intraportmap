@@ -1,0 +1,22 @@
+#ifndef SS_ANDROID_CONFIG_H
+#define SS_ANDROID_CONFIG_H
+#define HAVE_CONFIG_H 1
+#define HAVE_STDINT_H 1
+#define HAVE_INTTYPES_H 1
+#define HAVE_NETDB_H 1
+#define HAVE_NETINET_TCP_H 1
+#define HAVE_NET_IF_H 1
+#define HAVE_SYS_IOCTL_H 1
+#define HAVE_PCRE_H 1
+#define HAVE_POSIX_MEMALIGN 1
+#define HAVE_GETPWNAM_R 1
+#define HAVE_SETRLIMIT 1
+#define HAVE_LINUX_RANDOM_H 1
+#define HAVE_DECL_INET_NTOP 1
+#define CONNECT_IN_PROGRESS EINPROGRESS
+#define VERSION "3.3.5-android"
+#define PACKAGE_NAME "shadowsocks-libev"
+#define STDC_HEADERS 1
+#define TIME_WITH_SYS_TIME 1
+#define RETSIGTYPE void
+#endif

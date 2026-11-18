@@ -18,6 +18,7 @@ autom4te.cache/
 compile
 config.guess
 config.h
+!android/native/shadowsocks/config.h
 config.h.in
 config.h.in~
 config.log
