@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.intraportmap.android.tests">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="32" />
+    <application android:label="IntraPortMap tests" />
+    <instrumentation android:name="org.intraportmap.android.DeviceSmokeTest" android:targetPackage="org.intraportmap.android" />
+</manifest>
