@@ -1,0 +1,90 @@
+name: Android APK Release
+
+on:
+  push:
+    tags: ['android-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android toolchain
+        run: |
+          & "$env:ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat" 'platforms;android-36' 'build-tools;36.1.0' 'ndk;27.3.13750724'
+          if ($LASTEXITCODE -ne 0) { throw 'Android SDK installation failed' }
+          python -m pip install --target .build-tools/python cmake==3.31.6 ninja==1.11.1.4
+          if ($LASTEXITCODE -ne 0) { throw 'CMake/Ninja installation failed' }
+      - name: Cache pinned dependency sources
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build-tools/ss-deps
+            .build-tools/libevent-2.1.12-stable
+          key: android-sources-${{ runner.os }}-${{ hashFiles('android/prepare-shadowsocks.py', '.github/workflows/android-release.yml') }}
+      - name: Prepare dependency sources
+        run: |
+          if (!(Test-Path .build-tools/libevent-2.1.12-stable/CMakeLists.txt)) {
+            Invoke-WebRequest 'https://github.com/libevent/libevent/releases/download/release-2.1.12-stable/libevent-2.1.12-stable.tar.gz' -OutFile .build-tools/libevent.tar.gz
+            $hash=(Get-FileHash .build-tools/libevent.tar.gz -Algorithm SHA256).Hash
+            if ($hash -ne '92E6DE1BE9EC176428FD2367677E61CEFFC2EE1CB119035037A27D346B0403BB') { throw 'libevent checksum mismatch' }
+            tar -xzf .build-tools/libevent.tar.gz -C .build-tools
+            if ($LASTEXITCODE -ne 0) { throw 'libevent extraction failed' }
+          }
+          python android/prepare-shadowsocks.py
+          if ($LASTEXITCODE -ne 0) { throw 'Shadowsocks dependency preparation failed' }
+      - name: Host regression tests
+        run: ./android/test-host.ps1 -Java $env:JAVA_HOME
+      - name: Use independent test signing
+        run: |
+          Write-Host 'A fresh CI test signing key will be generated. This APK cannot update a locally signed installation.'
+      - name: Build and verify APK
+        run: ./android/build.ps1 -Sdk $env:ANDROID_HOME -Java $env:JAVA_HOME -Ndk "$env:ANDROID_HOME/ndk/27.3.13750724"
+      - name: APK checksum
+        run: |
+          $apk='dist/intraportmap-shadowsocks-android.apk'
+          $hash=(Get-FileHash $apk -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  intraportmap-shadowsocks-android.apk" | Set-Content dist/SHA256SUMS.txt -Encoding ascii
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: intraportmap-android
+          path: |
+            dist/intraportmap-shadowsocks-android.apk
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: Publish Android release
+        if: startsWith(github.ref, 'refs/tags/android-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: IntraPortMap Android ${{ github.ref_name }}
+          prerelease: true
+          body: |
+            Android 8.0+ test APK, including IntraPortMap and Shadowsocks server.
+            Independently signed by this CI run; cannot update locally signed APKs or APKs signed by another CI run.
+            Back up configuration and exported logs before uninstalling an existing installation.
+          generate_release_notes: true
+          files: |
+            dist/intraportmap-shadowsocks-android.apk
+            dist/SHA256SUMS.txt
+      - name: Remove temporary signing key
+        if: always()
+        run: Remove-Item -LiteralPath android/debug.keystore -ErrorAction SilentlyContinue

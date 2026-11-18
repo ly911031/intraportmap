@@ -2,4 +2,5 @@
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="32" />
     <application android:label="IntraPortMap tests" />
     <instrumentation android:name="org.intraportmap.android.DeviceSmokeTest" android:targetPackage="org.intraportmap.android" />
+    <instrumentation android:name="org.intraportmap.android.CombinedSmokeTest" android:targetPackage="org.intraportmap.android" />
 </manifest>

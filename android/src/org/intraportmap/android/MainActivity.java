@@ -17,12 +17,19 @@ public class MainActivity extends Activity {
     private Spinner role, protocol;
     private EditText server, remote, local, key, retry, timeout;
     private TextView status, battery;
+    private TextView ssStatus;
+    private EditText ssHost,ssPort,ssPassword,ssTimeout,ssDns,ssMtu;
+    private Spinner ssMethod,ssProtocol;
+    private ViewFlipper pages;
+    private Button tunnelTab,ssTab;
+    private static final String[] SS_METHODS={"chacha20-ietf-poly1305","aes-128-gcm","aes-192-gcm","aes-256-gcm","xchacha20-ietf-poly1305"};
     private boolean changingRecents;
     private static final int EXPORT_LOGS=100;
     private final Handler handler = new Handler();
     private final Runnable refresh = new Runnable() {
         public void run() {
             status.setText(TunnelService.running ? "运行中 · 连接详情已写入日志文件" : "已停止");
+            ssStatus.setText(ShadowsocksService.state);
             PowerManager pm = (PowerManager)getSystemService(POWER_SERVICE);
             battery.setText("电池优化：" + (pm.isIgnoringBatteryOptimizations(getPackageName()) ? "已豁免" : "未豁免，休眠可能断网")
                 + "\n省电模式：" + (pm.isPowerSaveMode() ? "开启" : "关闭")
@@ -42,14 +49,23 @@ public class MainActivity extends Activity {
     }
     private EditText field(String title, String name, String initial, boolean secret, boolean number) {
         label(title,14); EditText e = new EditText(this); e.setSingleLine(true); e.setTextSize(16);
-        e.setInputType(number ? InputType.TYPE_CLASS_NUMBER : InputType.TYPE_CLASS_TEXT | (secret ? InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS));
+        e.setInputType(number ? InputType.TYPE_CLASS_NUMBER : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         e.setText(getPreferences(0).getString(name,initial)); e.setTag(name); body.addView(e); return e;
     }
     public void onCreate(Bundle state) {
         super.onCreate(state);
         applyRecentVisibility(getPreferences(0).getBoolean("hideRecents",false));
         ScrollView scroll = new ScrollView(this); body = new LinearLayout(this); body.setOrientation(1);
-        body.setPadding(dp(24),dp(20),dp(24),dp(30)); scroll.addView(body); setContentView(scroll);
+        body.setPadding(dp(24),dp(20),dp(24),dp(30)); scroll.addView(body);
+        LinearLayout root=new LinearLayout(this); root.setOrientation(1);
+        LinearLayout tabs=new LinearLayout(this);
+        tunnelTab=new Button(this); tunnelTab.setText("端口映射");
+        ssTab=new Button(this); ssTab.setText("Shadowsocks");
+        tabs.addView(tunnelTab,new LinearLayout.LayoutParams(0,dp(56),1));
+        tabs.addView(ssTab,new LinearLayout.LayoutParams(0,dp(56),1)); root.addView(tabs);
+        pages=new ViewFlipper(this); pages.addView(scroll);
+        root.addView(pages,new LinearLayout.LayoutParams(-1,0,1)); setContentView(root);
+        tunnelTab.setOnClickListener(v -> showPage(0)); ssTab.setOnClickListener(v -> showPage(1));
         label("IntraPortMap",28); label("内网端口映射 · Android",16);
         status = label("已停止",16);
         role = select("运行模式",new String[]{"客户端（将内网服务映射到公网）","服务端（监听客户端连接）"},getPreferences(0).getInt("role",0));
@@ -101,6 +117,76 @@ public class MainActivity extends Activity {
         Button settings = new Button(this); settings.setText("打开应用设置（允许后台运行）"); body.addView(settings);
         settings.setOnClickListener(v -> openSettings(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName()))));
         label("建议允许电池无限制/后台运行，并在厂商设置中允许自启动、锁定最近任务。映射期间持有 CPU/Wi-Fi 锁，会增加耗电。划掉界面会继续运行；点击停止才结束。系统强行停止、重启手机或厂商清理仍可能中断，请重新打开应用启动。",12);
+        buildShadowsocksPage();
+        root.setBackgroundColor(AppStyle.BACKGROUND);
+        tabs.setBackgroundColor(Color.WHITE);
+        tabs.setPadding(dp(16),dp(10),dp(16),dp(10));
+        AppStyle.apply(root);
+        AppStyle.status(status); AppStyle.status(ssStatus);
+        showPage(getIntent().getIntExtra("page",getPreferences(0).getInt("lastPage",0)));
+    }
+    private void showPage(int index) {
+        if(pages==null || pages.getChildCount()<2) return;
+        index=index==1 ? 1 : 0; pages.setDisplayedChild(index);
+        AppStyle.tab(tunnelTab,index==0); AppStyle.tab(ssTab,index==1);
+        getPreferences(0).edit().putInt("lastPage",index).apply();
+    }
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent); setIntent(intent); showPage(intent.getIntExtra("page",0));
+    }
+    private void buildShadowsocksPage() {
+        LinearLayout tunnelBody=body;
+        ScrollView scroll=new ScrollView(this); body=new LinearLayout(this); body.setOrientation(1);
+        body.setPadding(dp(24),dp(20),dp(24),dp(30)); scroll.addView(body); pages.addView(scroll);
+        label("Shadowsocks 服务端",26);
+        label("在本机运行 ss-server，接受 Shadowsocks 客户端连接。两个页面可以同时运行、独立停止。",14);
+        ssStatus=label("已停止",16);
+        ssHost=field("监听地址","ss_host","0.0.0.0",false,false);
+        ssPort=field("监听端口","ss_port","8388",false,true);
+        ssPassword=field("密码（与客户端一致，启动时保存）","ss_password","",true,false);
+        ssMethod=select("加密方式（与客户端一致）",SS_METHODS,getPreferences(0).getInt("ss_method",0));
+        ssProtocol=select("协议",new String[]{"TCP","TCP + UDP","仅 UDP"},getPreferences(0).getInt("ss_protocol",0));
+        ssTimeout=field("连接超时（秒）","ss_timeout","300",false,true);
+        ssMtu=field("UDP MTU（默认 1500，大包需与客户端一起调整）","ss_mtu","1500",false,true);
+        ssDns=field("DNS 服务器（留空使用当前网络 DNS）","ss_dns","",false,false);
+        ssDns.setHint("例如 1.1.1.1；多个 IP 用逗号分隔");
+        Button start=new Button(this); start.setText("保存并启动 Shadowsocks"); body.addView(start);
+        start.setOnClickListener(v -> startShadowsocks());
+        Button stop=new Button(this); stop.setText("停止 Shadowsocks"); body.addView(stop);
+        stop.setOnClickListener(v -> stopService(new Intent(this,ShadowsocksService.class)));
+        label("本机访问可使用 127.0.0.1；局域网访问使用手机 IP 和监听端口。需要通过公网端口映射访问时，在“端口映射”页面把内网目标指向 127.0.0.1:监听端口，并保持两端协议一致。",12);
+        label("DNS 留空时，仅在网络 DNS 地址变化后重启 SS；手动填写 DNS 时不监听网络变化，也不自动重启。建议监听 0.0.0.0（IPv4）或 ::（IPv6）；固定某个网卡 IP 在换网后可能失效。",12);
+        Button settings=new Button(this); settings.setText("后台保活与日志导出设置"); body.addView(settings);
+        settings.setOnClickListener(v -> showPage(0));
+        body=tunnelBody;
+    }
+    private void startShadowsocks() {
+        try {
+            String host=value(ssHost);
+            if(host.isEmpty() || host.matches(".*\\s+.*") || host.startsWith("-")) throw new IllegalArgumentException("请填写有效的监听地址");
+            if(host.startsWith("[") && host.endsWith("]")) host=host.substring(1,host.length()-1);
+            int port=Integer.parseInt(value(ssPort));
+            if(port<1024 || port>65535) throw new IllegalArgumentException("无 root 模式下请使用 1024–65535 的监听端口");
+            String password=ssPassword.getText().toString();
+            if(password.isEmpty()) throw new IllegalArgumentException("请填写 Shadowsocks 密码");
+            int mtu=Integer.parseInt(value(ssMtu));
+            if(mtu<576 || mtu>65535) throw new IllegalArgumentException("UDP MTU 需为 576–65535");
+            ArrayList<String> args=new ArrayList<>();
+            Collections.addAll(args,"-s",host,"-p",Integer.toString(port),"-k",password,"-m",SS_METHODS[ssMethod.getSelectedItemPosition()],"-t",seconds(ssTimeout),"--mtu",Integer.toString(mtu));
+            if(ssProtocol.getSelectedItemPosition()>0) args.add(ssProtocol.getSelectedItemPosition()==1 ? "-u" : "-U");
+            String dns=value(ssDns);
+            if(!dns.isEmpty()) {
+                if(!dns.matches("[0-9a-fA-F:.,\\[\\]]+")) throw new IllegalArgumentException("DNS 请填写 IP 地址，多个 IP 用逗号分隔");
+                Collections.addAll(args,"-d",DnsServers.normalize(dns));
+            }
+            SharedPreferences.Editor edit=getPreferences(0).edit();
+            edit.putString("ss_password",password);
+            for(EditText e:new EditText[]{ssHost,ssPort,ssTimeout,ssDns,ssMtu}) edit.putString((String)e.getTag(),value(e));
+            edit.putInt("ss_method",ssMethod.getSelectedItemPosition()).putInt("ss_protocol",ssProtocol.getSelectedItemPosition()).apply();
+            startForegroundService(new Intent(this,ShadowsocksService.class).putStringArrayListExtra("args",args));
+            ssStatus.setText("配置已保存，正在启动…");
+            Toast.makeText(this,"SS 配置已保存，正在启动；监听成功后会更新状态",Toast.LENGTH_SHORT).show();
+        } catch(IllegalArgumentException e) { Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show(); }
     }
     private void openSettings(Intent intent) {
         try { startActivity(intent); }
@@ -146,7 +232,6 @@ public class MainActivity extends Activity {
         catch(Exception x) { throw new IllegalArgumentException("时间需为 1–86400 秒"); }
     }
     private void startTunnel() {
-        if(TunnelService.running) { Toast.makeText(this,"请先停止当前映射",0).show(); return; }
         try {
             ArrayList<String> args = new ArrayList<>();
             if(role.getSelectedItemPosition()==0) args.add("-c");
@@ -160,6 +245,8 @@ public class MainActivity extends Activity {
             // Keep the communication key in memory only; never persist it or print arguments.
             edit.putInt("role",role.getSelectedItemPosition()).putInt("protocol",protocol.getSelectedItemPosition()).apply();
             startForegroundService(new Intent(this,TunnelService.class).putStringArrayListExtra("args",args));
+            status.setText("配置已保存，正在启动…");
+            Toast.makeText(this,"配置已保存，正在启动端口映射",Toast.LENGTH_SHORT).show();
         } catch(IllegalArgumentException e) { Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show(); }
     }
     protected void onResume() {

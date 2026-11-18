@@ -18,3 +18,4 @@ target_compile_definitions(intraportmap PRIVATE _GNU_SOURCE evdns_getaddrinfo=ip
 target_compile_options(intraportmap PRIVATE -Os -fno-exceptions -fno-rtti -ffunction-sections -fdata-sections)
 target_link_options(intraportmap PRIVATE -Wl,--gc-sections -Wl,-z,max-page-size=16384)
 set_target_properties(intraportmap PROPERTIES OUTPUT_NAME "libintraportmap.so")
+add_subdirectory(shadowsocks)
