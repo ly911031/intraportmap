@@ -81,6 +81,7 @@ public class MainActivity extends Activity {
         Button stop = new Button(this); stop.setText("停止映射"); body.addView(stop);
         start.setOnClickListener(v -> startTunnel());
         stop.setOnClickListener(v -> stopService(new Intent(this,TunnelService.class)));
+        bootSwitch(TunnelService.class);
         role.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             public void onNothingSelected(AdapterView<?> a) {}
             public void onItemSelected(AdapterView<?> a,View v,int p,long id) { remote.setEnabled(p==0); local.setEnabled(p==0); }
@@ -119,7 +120,7 @@ public class MainActivity extends Activity {
         });
         Button settings = new Button(this); settings.setText("打开应用设置（允许后台运行）"); body.addView(settings);
         settings.setOnClickListener(v -> openSettings(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName()))));
-        label("建议允许电池无限制/后台运行，并在厂商设置中允许自启动、锁定最近任务。映射期间持有 CPU/Wi-Fi 锁，会增加耗电。划掉界面会继续运行；点击停止才结束。系统强行停止、重启手机或厂商清理仍可能中断，请重新打开应用启动。",12);
+        label("建议允许电池无限制/后台运行，并在厂商设置中允许自启动。开机启动需在对应页面开启开关；重启后首次解锁恢复后台服务，不弹出界面。停止按钮只停止本次运行，取消开机启动请关闭开关。",12);
         buildShadowsocksPage();
         root.setBackgroundColor(AppStyle.BACKGROUND);
         tabs.setBackgroundColor(Color.WHITE);
@@ -157,6 +158,7 @@ public class MainActivity extends Activity {
         start.setOnClickListener(v -> startShadowsocks());
         Button stop=new Button(this); stop.setText("停止 Shadowsocks"); body.addView(stop);
         stop.setOnClickListener(v -> stopService(new Intent(this,ShadowsocksService.class)));
+        bootSwitch(ShadowsocksService.class);
         label("本机访问可使用 127.0.0.1；局域网访问使用手机 IP 和监听端口。需要通过公网端口映射访问时，在“端口映射”页面把内网目标指向 127.0.0.1:监听端口，并保持两端协议一致。",12);
         label("DNS 留空时，仅在网络 DNS 地址变化后重启 SS；手动填写 DNS 时不监听网络变化，也不自动重启。建议监听 0.0.0.0（IPv4）或 ::（IPv6）；固定某个网卡 IP 在换网后可能失效。",12);
         Button settings=new Button(this); settings.setText("后台保活与日志导出设置"); body.addView(settings);
@@ -190,6 +192,23 @@ public class MainActivity extends Activity {
             ssStatus.setText("配置已保存，正在启动…");
             Toast.makeText(this,"SS 配置已保存，正在启动；监听成功后会更新状态",Toast.LENGTH_SHORT).show();
         } catch(IllegalArgumentException e) { Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show(); }
+    }
+    private void bootSwitch(Class<?> service) {
+        Switch toggle=new Switch(this); toggle.setText("开机自动启动");
+        toggle.setChecked(BootSettings.enabled(this,service)); body.addView(toggle);
+        final boolean[] reverting={false};
+        toggle.setOnCheckedChangeListener((button,enabled) -> {
+            if(reverting[0]) return;
+            if(enabled && BootSettings.arguments(this,service).isEmpty()) {
+                reverting[0]=true; button.setChecked(false); reverting[0]=false;
+                Toast.makeText(this,"请先填写配置并保存启动一次，再开启开机启动",Toast.LENGTH_LONG).show(); return;
+            }
+            if(!BootSettings.enable(this,service,enabled)) {
+                reverting[0]=true; button.setChecked(!enabled); reverting[0]=false;
+                Toast.makeText(this,"开机启动设置保存失败",Toast.LENGTH_LONG).show(); return;
+            }
+            Toast.makeText(this,enabled ? "已开启：重启后首次解锁自动恢复服务" : "已关闭开机自动启动",Toast.LENGTH_SHORT).show();
+        });
     }
     private void openSettings(Intent intent) {
         try { startActivity(intent); }
@@ -245,7 +264,7 @@ public class MainActivity extends Activity {
             if(protocol.getSelectedItemPosition()>0) args.add(protocol.getSelectedItemPosition()==1 ? "-u":"-U");
             SharedPreferences.Editor edit = getPreferences(0).edit();
             for(EditText e:new EditText[]{server,remote,local,retry,timeout}) edit.putString((String)e.getTag(),value(e));
-            // Keep the communication key in memory only; never persist it or print arguments.
+            edit.putString("key",key.getText().toString());
             edit.putInt("role",role.getSelectedItemPosition()).putInt("protocol",protocol.getSelectedItemPosition()).apply();
             Compat.start(this,new Intent(this,TunnelService.class).putStringArrayListExtra("args",args));
             status.setText("配置已保存，正在启动…");

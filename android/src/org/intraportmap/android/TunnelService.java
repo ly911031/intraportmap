@@ -65,6 +65,8 @@ public class TunnelService extends Service {
         if(intent!=null && STOP.equals(intent.getAction())) { stopSelf(); return START_NOT_STICKY; }
         ArrayList<String> args = intent==null ? null : intent.getStringArrayListExtra("args");
         if(args==null || args.isEmpty()) { stopSelf(); return START_NOT_STICKY; }
+        try { BootSettings.save(this,getClass(),args); }
+        catch(RuntimeException e) { append("开机配置保存失败："+e.getMessage()); }
         configureNetworkWatcher(args);
         synchronized(this) {
             requestedArgs = new ArrayList<>(args);
