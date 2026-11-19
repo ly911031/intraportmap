@@ -94,7 +94,8 @@ jobs:
           tag_name: ${{ steps.release.outputs.tag }}
           target_commitish: ${{ github.sha }}
           name: IntraPortMap Android ${{ steps.release.outputs.tag }}
-          prerelease: true
+          prerelease: false
+          make_latest: true
           body: |
             Android 5.0+ test APK, including IntraPortMap and Shadowsocks server. Android 5 runtime compatibility still requires device validation.
             Independently signed by this CI run; cannot update locally signed APKs or APKs signed by another CI run.
