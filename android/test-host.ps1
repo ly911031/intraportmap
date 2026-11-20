@@ -6,11 +6,14 @@ function Run([string]$Exe,[string[]]$Arguments) {
     if($LASTEXITCODE -ne 0) { throw "$Exe failed: $LASTEXITCODE" }
 }
 if(!$Java) { throw 'Specify -Java or JAVA_HOME' }
+Run 'python' @("$PSScriptRoot/prepare-test-json.py")
+$jsonJar="$PSScriptRoot/../.build-tools/test-json.jar"
 $out="$PSScriptRoot/build/host-tests"
 New-Item -ItemType Directory -Force $out,"$out/logs-test" | Out-Null
 $src="$PSScriptRoot/src/org/intraportmap/android"
 $fixtures=@(Get-ChildItem "$PSScriptRoot/tests-host/network" -Recurse -Filter '*.java' | ForEach-Object FullName)
-Run "$Java/bin/javac.exe" (@('-encoding','UTF-8','-d',$out,"$src/NetworkWatcher.java","$src/DnsServers.java","$src/LogStore.java","$PSScriptRoot/tests-host/DnsServersTest.java","$PSScriptRoot/tests/org/intraportmap/android/LogStoreTest.java")+$fixtures)
+Run "$Java/bin/javac.exe" (@('-encoding','UTF-8','-cp',$jsonJar,'-d',$out,"$src/NetworkWatcher.java","$src/DnsServers.java","$src/LogStore.java","$src/ConfigCodec.java","$PSScriptRoot/tests-host/ConfigCodecTest.java","$PSScriptRoot/tests-host/DnsServersTest.java","$PSScriptRoot/tests/org/intraportmap/android/LogStoreTest.java")+$fixtures)
+Run "$Java/bin/java.exe" @('-cp',"$out;$jsonJar",'org.intraportmap.android.ConfigCodecTest')
 foreach($api in '21','23','24','26') {
     Run "$Java/bin/java.exe" @('-cp',$out,'org.intraportmap.android.NetworkWatcherTest',$api)
 }

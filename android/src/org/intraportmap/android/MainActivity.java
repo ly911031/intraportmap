@@ -7,6 +7,8 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.provider.Settings;
 import android.text.InputType;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.*;
 import android.widget.*;
 import java.io.*;
@@ -25,11 +27,16 @@ public class MainActivity extends Activity {
     private static final String[] SS_METHODS={"chacha20-ietf-poly1305","aes-128-gcm","aes-192-gcm","aes-256-gcm","xchacha20-ietf-poly1305"};
     private boolean changingRecents;
     private static final int EXPORT_LOGS=100;
+    private static final int CREATE_CONFIG=101,OPEN_CONFIG=102;
+    private ConfigStore configStore;
+    private TextView configStatus;
+    private ProgressDialog configDialog;
     private final Handler handler = new Handler();
     private final Runnable refresh = new Runnable() {
         public void run() {
             status.setText(TunnelService.running ? "运行中 · 连接详情已写入日志文件" : "已停止");
             ssStatus.setText(ShadowsocksService.state);
+            if(configStatus!=null) configStatus.setText(configStore.status);
             PowerManager pm = (PowerManager)getSystemService(POWER_SERVICE);
             battery.setText("电池优化：" + (Build.VERSION.SDK_INT<23 ? "当前系统无需 Doze 豁免" : pm.isIgnoringBatteryOptimizations(getPackageName()) ? "已豁免" : "未豁免，休眠可能断网")
                 + "\n省电模式：" + (pm.isPowerSaveMode() ? "开启" : "关闭")
@@ -50,10 +57,20 @@ public class MainActivity extends Activity {
     private EditText field(String title, String name, String initial, boolean secret, boolean number) {
         label(title,14); EditText e = new EditText(this); e.setSingleLine(true); e.setTextSize(16);
         e.setInputType(number ? InputType.TYPE_CLASS_NUMBER : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        e.setText(getPreferences(0).getString(name,initial)); e.setTag(name); body.addView(e); return e;
+        e.setText(getPreferences(0).getString(name,initial)); e.setTag(name);
+        e.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(16384)});
+        e.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s,int start,int count,int after) {}
+            public void onTextChanged(CharSequence s,int start,int before,int count) {
+                getPreferences(0).edit().putString(name,s.toString()).apply();
+            }
+            public void afterTextChanged(Editable value) {}
+        });
+        body.addView(e); return e;
     }
     public void onCreate(Bundle state) {
         super.onCreate(state);
+        configStore=new ConfigStore(this,getPreferences(0));
         applyRecentVisibility(getPreferences(0).getBoolean("hideRecents",false));
         ScrollView scroll = new ScrollView(this); body = new LinearLayout(this); body.setOrientation(1);
         body.setPadding(dp(24),dp(20),dp(24),dp(30)); scroll.addView(body);
@@ -90,12 +107,24 @@ public class MainActivity extends Activity {
         });
         buildShadowsocksPage();
         buildSettingsPage();
+        watchSpinner(role,"role"); watchSpinner(protocol,"protocol");
+        watchSpinner(ssMethod,"ss_method"); watchSpinner(ssProtocol,"ss_protocol");
         root.setBackgroundColor(AppStyle.BACKGROUND);
         tabs.setBackgroundColor(Color.WHITE);
         tabs.setPadding(dp(16),dp(10),dp(16),dp(10));
         AppStyle.apply(root);
         AppStyle.status(status); AppStyle.status(ssStatus);
         showPage(getIntent().getIntExtra("page",getPreferences(0).getInt("lastPage",0)));
+        configStore.flush();
+    }
+    private void watchSpinner(Spinner spinner,String name) {
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            public void onNothingSelected(AdapterView<?> parent) {}
+            public void onItemSelected(AdapterView<?> parent,View view,int position,long id) {
+                if(spinner==role) { remote.setEnabled(position==0); local.setEnabled(position==0); }
+                getPreferences(0).edit().putInt(name,position).apply();
+            }
+        });
     }
     private void showPage(int index) {
         if(pages==null || pages.getChildCount()<3) return;
@@ -115,7 +144,7 @@ public class MainActivity extends Activity {
         ssStatus=label("已停止",16);
         ssHost=field("监听地址","ss_host","0.0.0.0",false,false);
         ssPort=field("监听端口","ss_port","8388",false,true);
-        ssPassword=field("密码（与客户端一致，启动时保存）","ss_password","",true,false);
+        ssPassword=field("密码（与客户端一致，自动保存）","ss_password","",true,false);
         ssMethod=select("加密方式（与客户端一致）",SS_METHODS,getPreferences(0).getInt("ss_method",0));
         ssProtocol=select("协议",new String[]{"TCP","TCP + UDP","仅 UDP"},getPreferences(0).getInt("ss_protocol",0));
         ssTimeout=field("连接超时（秒）","ss_timeout","300",false,true);
@@ -135,6 +164,14 @@ public class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this); body=new LinearLayout(this); body.setOrientation(1);
         body.setPadding(dp(24),dp(20),dp(24),dp(30)); scroll.addView(body); pages.addView(scroll);
         label("设置",26);
+        label("配置文件",18);
+        configStatus=label(configStore.status,14);
+        label("每次修改自动保存到本机配置文件，包括密码和密钥。覆盖安装自动读取；点击启动才将新配置用于运行和开机恢复。",12);
+        Button createConfig=new Button(this); createConfig.setText("选择配置文件保存位置（自动同步）"); body.addView(createConfig);
+        createConfig.setOnClickListener(v -> chooseConfig(false));
+        Button openConfig=new Button(this); openConfig.setText("读取已有配置文件（重装恢复）"); body.addView(openConfig);
+        openConfig.setOnClickListener(v -> chooseConfig(true));
+        label("如需卸载后保留，请选择手机 Documents 等公共目录中的文件。重装后重新选择该文件，即可恢复并继续自动同步。读取配置不会立即启动或重启服务。",12);
         label("开机启动",18);
         bootSwitch(TunnelService.class,"开机自动启动端口映射");
         bootSwitch(ShadowsocksService.class,"开机自动启动 Shadowsocks");
@@ -225,6 +262,14 @@ public class MainActivity extends Activity {
         try { startActivity(intent); }
         catch(ActivityNotFoundException e) { Toast.makeText(this,"系统未提供该入口，请手动打开设置 → 应用 → IntraPortMap → 电池",Toast.LENGTH_LONG).show(); }
     }
+    private void chooseConfig(boolean load) {
+        Intent intent=new Intent(load ? Intent.ACTION_OPEN_DOCUMENT : Intent.ACTION_CREATE_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE).setType(load ? "*/*" : "application/json")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        if(!load) intent.putExtra(Intent.EXTRA_TITLE,"intraportmap-config.json");
+        try { startActivityForResult(intent,load ? OPEN_CONFIG : CREATE_CONFIG); }
+        catch(ActivityNotFoundException e) { Toast.makeText(this,"系统未提供文件选择入口",Toast.LENGTH_LONG).show(); }
+    }
     private boolean applyRecentVisibility(boolean hidden) {
         try {
             ActivityManager manager=(ActivityManager)getSystemService(ACTIVITY_SERVICE);
@@ -237,6 +282,25 @@ public class MainActivity extends Activity {
     }
     protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
+        if((request==CREATE_CONFIG || request==OPEN_CONFIG) && result==RESULT_OK && data!=null && data.getData()!=null) {
+            Uri uri=data.getData();
+            int flags=data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            try {
+                if((flags & 3)!=3) throw new SecurityException();
+                getContentResolver().takePersistableUriPermission(uri,flags);
+            } catch(SecurityException e) { Toast.makeText(this,"请为配置文件授予持久读写权限",Toast.LENGTH_LONG).show(); return; }
+            configDialog=ProgressDialog.show(this,"配置文件",request==OPEN_CONFIG ? "正在读取配置…" : "正在保存配置…",true,false);
+            final int orientation=getRequestedOrientation();
+            setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED);
+            configStore.select(uri,request==OPEN_CONFIG,error -> {
+                if(configDialog!=null) { configDialog.dismiss(); configDialog=null; }
+                if(isFinishing() || isDestroyed()) return;
+                setRequestedOrientation(orientation);
+                Toast.makeText(this,error==null ? "配置文件已就绪，后续修改将自动保存" : error,Toast.LENGTH_LONG).show();
+                if(error==null && request==OPEN_CONFIG) { getIntent().putExtra("page",2); recreate(); }
+            });
+            return;
+        }
         if(request!=EXPORT_LOGS || result!=RESULT_OK || data==null || data.getData()==null) return;
         Uri uri=data.getData();
         Toast.makeText(this,"正在导出日志",Toast.LENGTH_SHORT).show();
@@ -285,5 +349,9 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume(); applyRecentVisibility(getPreferences(0).getBoolean("hideRecents",false)); handler.post(refresh);
     }
-    protected void onPause() { handler.removeCallbacks(refresh); super.onPause(); }
+    protected void onPause() { handler.removeCallbacks(refresh); if(configStore!=null) configStore.flush(); super.onPause(); }
+    protected void onDestroy() {
+        if(configDialog!=null) configDialog.dismiss();
+        if(configStore!=null) configStore.close(); super.onDestroy();
+    }
 }
