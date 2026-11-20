@@ -5,7 +5,10 @@ param(
     [string]$Cmake = "$PSScriptRoot\..\.build-tools\python\cmake\data\bin\cmake.exe",
     [string]$Ninja = "$PSScriptRoot\..\.build-tools\python\bin\ninja.exe",
     [string]$Libevent = "$PSScriptRoot\..\.build-tools\libevent-2.1.12-stable",
-    [string[]]$Abis = @('arm64-v8a','armeabi-v7a','x86_64')
+    [string[]]$Abis = @('arm64-v8a','armeabi-v7a','x86_64'),
+    [string]$KeyStore = "$PSScriptRoot\debug.keystore",
+    [string]$KeyAlias = 'androiddebugkey',
+    [switch]$RequireSigningKey
 )
 $ErrorActionPreference = 'Stop'
 function Run([string]$Exe, [string[]]$Arguments) {
@@ -18,6 +21,9 @@ $out = "$PSScriptRoot\build"
 $bt = "$Sdk\build-tools\36.1.0"
 $jar = "$Sdk\platforms\android-36\android.jar"
 $env:JAVA_HOME = $Java
+if($RequireSigningKey -and (!(Test-Path -LiteralPath $KeyStore) -or !$env:ANDROID_STORE_PASSWORD -or !$env:ANDROID_KEY_PASSWORD)) {
+    throw 'Fixed release signing key/password is missing; refusing replacement signing'
+}
 $ssDeps="$root\.build-tools\ss-deps"
 if(!(Test-Path "$ssDeps\shadowsocks\.android-source-sha256")) {
     throw 'Run python android/prepare-shadowsocks.py before building the combined APK.'
@@ -54,12 +60,15 @@ Copy-Item "$out\base.apk" "$out\unsigned.apk" -Force
 Push-Location "$out\package"
 try { Run "$Java\bin\jar.exe" @('uf',"$out\unsigned.apk",'classes.dex','lib') } finally { Pop-Location }
 Run "$bt\zipalign.exe" @('-f','-p','4',"$out\unsigned.apk","$out\aligned.apk")
-$store = "$PSScriptRoot\debug.keystore"
+$store = $KeyStore
 if (!(Test-Path $store)) {
+    if($RequireSigningKey) { throw 'Fixed release signing key is missing; refusing to generate a replacement' }
     Run "$Java\bin\keytool.exe" @('-genkeypair','-keystore',$store,'-storepass','android','-keypass','android','-alias','androiddebugkey','-keyalg','RSA','-keysize','2048','-validity','10000','-dname','CN=Android Debug,O=Android,C=US')
 }
 $apk="$root\dist\intraportmap-shadowsocks-android.apk"
-Run "$bt\apksigner.bat" @('sign','--ks',$store,'--ks-pass','pass:android','--key-pass','pass:android','--out',$apk,"$out\aligned.apk")
-Run "$bt\apksigner.bat" @('verify','--verbose',$apk)
+$storePassword=if($RequireSigningKey) { 'env:ANDROID_STORE_PASSWORD' } else { 'pass:android' }
+$keyPassword=if($RequireSigningKey) { 'env:ANDROID_KEY_PASSWORD' } else { 'pass:android' }
+Run "$bt\apksigner.bat" @('sign','--ks',$store,'--ks-key-alias',$KeyAlias,'--ks-pass',$storePassword,'--key-pass',$keyPassword,'--out',$apk,"$out\aligned.apk")
+Run "$bt\apksigner.bat" @('verify','--verbose','--print-certs',$apk)
 Copy-Item $apk "$root\dist\intraportmap-android.apk" -Force
 Write-Host "APK: $apk"

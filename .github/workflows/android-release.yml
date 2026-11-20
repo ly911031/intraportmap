@@ -59,11 +59,28 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Shadowsocks dependency preparation failed' }
       - name: Host regression tests
         run: ./android/test-host.ps1 -Java $env:JAVA_HOME
-      - name: Use independent test signing
+      - name: Restore fixed release signing key
+        env:
+          ANDROID_RELEASE_SIGNING: ${{ secrets.ANDROID_RELEASE_SIGNING }}
         run: |
-          Write-Host 'A fresh CI test signing key will be generated. This APK cannot update a locally signed installation.'
+          if (!$env:ANDROID_RELEASE_SIGNING) { throw 'Missing ANDROID_RELEASE_SIGNING secret; refusing random signing' }
+          $signing=$env:ANDROID_RELEASE_SIGNING | ConvertFrom-Json
+          if (!$signing.keystore -or !$signing.password -or $signing.alias -ne 'intraportmap-release' -or $signing.cert_sha256 -notmatch '^[0-9a-f]{64}$') { throw 'Invalid signing configuration' }
+          Write-Output "::add-mask::$($signing.password)"
+          [IO.File]::WriteAllBytes("$env:GITHUB_WORKSPACE/android/release.keystore",[Convert]::FromBase64String($signing.keystore))
+          "ANDROID_STORE_PASSWORD=$($signing.password)" >> $env:GITHUB_ENV
+          "ANDROID_KEY_PASSWORD=$($signing.password)" >> $env:GITHUB_ENV
+          "ANDROID_CERT_SHA256=$($signing.cert_sha256)" >> $env:GITHUB_ENV
       - name: Build and verify APK
-        run: ./android/build.ps1 -Sdk $env:ANDROID_HOME -Java $env:JAVA_HOME -Ndk "$env:ANDROID_HOME/ndk/27.3.13750724"
+        run: ./android/build.ps1 -Sdk $env:ANDROID_HOME -Java $env:JAVA_HOME -Ndk "$env:ANDROID_HOME/ndk/27.3.13750724" -KeyStore "$env:GITHUB_WORKSPACE/android/release.keystore" -KeyAlias intraportmap-release -RequireSigningKey
+      - name: Verify fixed signing identity
+        run: |
+          $cert="$env:RUNNER_TEMP/intraportmap-release.der"
+          & "$env:JAVA_HOME/bin/keytool.exe" -exportcert -keystore android/release.keystore -storepass:env ANDROID_STORE_PASSWORD -alias intraportmap-release -file $cert
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot export release certificate' }
+          $actual=(Get-FileHash $cert -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:ANDROID_CERT_SHA256) { throw 'Release signing identity changed' }
+          "Release certificate SHA-256: $actual" | Set-Content dist/SIGNING-CERT.txt -Encoding ascii
       - name: APK checksum
         run: |
           $apk='dist/intraportmap-shadowsocks-android.apk'
@@ -76,6 +93,7 @@ jobs:
           path: |
             dist/intraportmap-shadowsocks-android.apk
             dist/SHA256SUMS.txt
+            dist/SIGNING-CERT.txt
           if-no-files-found: error
       - name: Choose release tag
         id: release
@@ -97,13 +115,14 @@ jobs:
           prerelease: false
           make_latest: true
           body: |
-            Android 5.0+ test APK, including IntraPortMap and Shadowsocks server. Android 5 runtime compatibility still requires device validation.
-            Independently signed by this CI run; cannot update locally signed APKs or APKs signed by another CI run.
-            Back up configuration and exported logs before uninstalling an existing installation.
+            Android 5.0+ APK, including IntraPortMap and Shadowsocks server. Android 5 runtime compatibility still requires device validation.
+            Uses the fixed release signing certificate; subsequent fixed-signature releases support in-place updates.
+            One-time migration from older random CI/local signatures requires backup and uninstall before installation.
           generate_release_notes: true
           files: |
             dist/intraportmap-shadowsocks-android.apk
             dist/SHA256SUMS.txt
+            dist/SIGNING-CERT.txt
       - name: Remove temporary signing key
         if: always()
-        run: Remove-Item -LiteralPath android/debug.keystore -ErrorAction SilentlyContinue
+        run: Remove-Item -LiteralPath android/release.keystore -ErrorAction SilentlyContinue

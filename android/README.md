@@ -20,7 +20,9 @@ Android 5.0（API 21）及以上的独立应用，复用仓库中的 C++ / libev
 
 ## 安装与使用
 
-GitHub Actions：master 上推送 Android 目录或发布工作流改动、推送 `android-v*` 标签，以及手动运行，均会在主机回归、三 ABI 编译与签名验证成功后自动发布预发布 Release，附 APK 与 SHA-256 文件。非标签运行自动创建 `android-v版本-build.运行号.尝试号` 标签。按当前选择，每次 CI 独立生成测试签名，不上传本地私钥，因此不能覆盖安装本地版或其他 CI 签名版本。卸载前请备份配置和导出日志。
+GitHub Actions：master 上推送 Android 目录或发布工作流改动、推送 `android-v*` 标签，以及手动运行，均会在主机回归、三 ABI 编译与签名验证成功后自动发布正式 Release，附 APK、SHA-256 文件和公开签名证书指纹。非标签运行自动创建 `android-v版本-build.运行号.尝试号` 标签。
+
+0.2.8 起统一使用固定发布签名，密钥加密保存在仓库 Secret `ANDROID_RELEASE_SIGNING`，每次构建恢复同一密钥；缺失或证书不匹配时发布失败，不生成随机替代密钥。首次从 0.2.7 及更早随机 CI 签名版或本地调试签名版迁移，需要先记录配置、导出日志，再卸载旧版安装一次；之后固定签名版本可覆盖升级并保留应用数据。不要删除或替换该 Secret；本机原有调试私钥未上传。
 
 安装 `../dist/intraportmap-shadowsocks-android.apk`（`intraportmap-android.apk` 为相同内容的兼容文件名）。这是本地调试密钥签名的安装包，适合直接安装测试，未配置商店发布签名。
 
